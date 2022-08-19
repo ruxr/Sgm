@@ -1,0 +1,41 @@
+
+ Format HTML page:
+
+               Title
+
+ Daily|Weekly|Monthly|Yearly graph (5/30 minute|2 hour|1 day average)
+
+  0+            ^
+   |            |
+ 10+    V   x*4 + - - + - - - + - - - + - - - +-
+   |    d       | X   |       |    XX |       |
+ 35+    n   x*3 + X - + - - - + - XXXXX - -X- +-
+   |    e       | X   |   X   |  XXXXXX    XX |
+ 60+    g   x*2 + XX- + -XX - + XXXXXXXX- -XXX+-
+   |    e       | XXX | XXX   | XXXXXXXXXXXXXX|
+ 85+    L     x + XXXX+XXXXX- +XXXXXXXXXXXXXXX+-
+   |            |XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+110+          0 +-----+-------+-------+-------+--->
+   |                    DescX
+127+----+-------+------------------------------+----+
+   0    20      98                            498 511
+
+        Min   Mid   Max   Now
+ Desc1  Min1  Mid1  Max1  Now1
+ [Desc2  Min2  Mid2  Max2  Now2]
+
+ Log file format:
+   a) contains 1602 text lines
+   b) line 1 contains the last modified timestamp and monitoring data values
+   c) line 2 contains the timestamp(T) and data of the last successful request
+   d) data for the daily graph starts at T-T%300, reverse order; 400 lines
+   e) data for the weekly graph starts at T-T%1800, reverse order; 400 lines
+   f) data for the monthly graph starts at T-T%7200, reverse order; 400 lines
+   g) data for the yearly graph starts at T-T%86400, reverse order; 400 lines
+     Line      Content:
+       1       timestamp data1 data2
+       2       timestamp-success data1-success data2-success
+     3 - 402   yearly-data1 yearly-data2
+   403 - 802   monthly-data1 montly-data2
+   803 - 1202  weekly-data1 weekly-data2
+  1203 - 1602  daily-data1 daily-data2

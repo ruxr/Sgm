@@ -1,0 +1,82 @@
+#!/bin/sh
+HLP="Convert MRTG log for Sgm
+
+	@(#) Mrtg2Sgm V1.1 (C) 2022 by Roman Oreshnikov
+
+	This is free software, and comes with NO WARRANTY
+
+Usage: Mrtg2Sgm [MrtgLogFile]
+
+Options:
+  -h  Display this text
+
+Report bugs to <r.oreshnikov@gmail.com>"
+Err() { echo "Mrtg2Sgm: $*" >&2; exit 1; }
+Use() { Err "\rUsage: Mrtg2Sgm [MrtgLogFile]"; }
+while getopts h V; do
+	case $V in
+	h) echo "$HLP"; exit;;
+	?) Use
+	esac
+done
+case $# in
+0);;
+1) [ "x$1" = x- -o -f "$1" ] || Err Missing source file $1!;;
+*) Use
+esac
+awk '
+/^[1-9][0-9]*(( [1-9][0-9]*)|( 0)){4}$/ {
+	if(NR == 2) $1 -= $1 % 300
+	else if(NR == 3) next
+	t -= $1
+	if($1 % 86400 == 0) Y[$1] = $2 " " $3
+	if($1 % 7200 == 0) M[$1] = $2 " " $3
+	if($1 % 1800 == 0) W[$1] = $2 " " $3
+	if(t <= 300) D[$1] = $2 " " $3
+	if(t < 1800)
+		if($1 % 1800) {
+			wc++; w1 += $2; w2 += $3
+		} else {
+			if(!wc) wc = 1
+			W[$1 + 1800] = int(w1 / wc) " " int(w2 / wc)
+			wc = 1; w1 = $2; w2 = $3
+		}
+	if(t < 7200)
+		if($1 % 7200) {
+			mc++; m1 += $2; m2 += $3
+		} else {
+			if(!mc) mc = 1
+			M[$1 + 7200] = int(m1 / mc) " " int(m2 / mc)
+			mc = 1; m1 = $2; m2 = $3
+		}
+	if(t < 86400)
+		if($1 % 86400) {
+			yc++; y1 += $2; y2 += $3
+		} else {
+			if(!yc) yc = 1
+			Y[$1 + 86400] = int(y1 / yc) " " int(y2 / yc)
+			yc = 1; y1 = $2; y2 = $3
+		}
+	t = $1
+	next
+}
+/^[1-9][0-9]*(( [1-9][0-9]*)|( 0)){2}$/ {
+	if(NR == 1) {
+		F = $0 "\n" $0
+		t = ((s = $1) - $1 % 300) + 300
+		next
+	}
+}
+{
+	print "NR: $0" >"/dev/stderr"
+	exit e = 1
+}
+END {
+	if(e) exit e
+	print F
+	for(t = s - s % 86400 - 399 * 86400; t <= s; t += 86400) print Y[t]
+	for(t = s - s % 7200 - 399 * 7200; t <= s; t += 7200) print M[t]
+	for(t = s - s % 1800 - 399 * 1800; t <= s; t += 1800) print W[t]
+	for(t = s - s % 300 - 399 * 300; t <= s; t += 300) print D[t]
+}
+' "$1"
