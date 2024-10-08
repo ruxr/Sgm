@@ -17,21 +17,233 @@ OID_ERR=.1.3.6.1.2.1.2.2.1.14	# Input errors
 # Program for requesting monitoring data
 SNMP="snmpget -O vq -v 2c -c public"
 
-# Use Sgm options from environ
-export SGM_F=Input
-export SGM_L=Output
-export SGM_D="Bytes per Second"
-export SGM_S=B/s
-$SNMP myrouter $OID_INP.1 $OID_OUT.1 | $SGM \
-	$DIR/gw-i "Loading an external channel"
+cd $DIR
+$SNMP myrouter $OID_INP.1 $OID_OUT.1 | $SGM gw-i&
+$SNMP myrouter .1.3.6.1.4.1.9.9.13.1.3.1.3.2 | $SGM -a gw-t&
+#
+#	Мониторинг UPS
+#
+HTM=ups.htm
+#
+# Battery Status code
+#
+Get() {
+	snmpget -O vqU -v 1 -c public $2 $3 |
+	while read F; do
+		case $F in
+		batteryNormal)		echo 2;;
+		batteryLow)		echo 3;;
+		batteryDepleted)	echo 4;;
+		unknown)		echo 1
+		esac
+	done | $SGM -a $1&
+}
+OID=.1.3.6.1.2.1.33.1.2.1.0
+Get ups-ge-bs ups-ge $OID
+Get ups-hp-bs ups-hp $OID
+Get ups-apc-bs ups-apc .1.3.6.1.4.1.318.1.1.1.2.1.1.0
+#
+Get() { snmpget -O vqUt -v 1 -c public $2 $3 $4 | $SGM -a $1& }
+#
+# Input/Output Frequency
+#
+OID_I=.1.3.6.1.2.1.33.1.3.3.1.2.1
+OID_O=.1.3.6.1.2.1.33.1.4.2.0
+Get ups-ge-uf ups-ge $OID_I $OID_O
+Get ups-hp-uf ups-hp $OID_I $OID_O
+Get ups-apc-uf ups-apc .1.3.6.1.4.1.318.1.1.1.3.2.4.0 \
+	.1.3.6.1.4.1.318.1.1.1.4.2.2.0
+#
+# UPS Voltage
+#
+OID_I=.1.3.6.1.2.1.33.1.3.3.1.3
+OID_O=.1.3.6.1.2.1.33.1.4.4.1.2
+Get ups-ge-uv ups-ge $OID_I.1 $OID_O.1
+Get ups-ge-v2 ups-ge $OID_I.2 $OID_O.2
+Get ups-ge-v3 ups-ge $OID_I.3 $OID_O.3
+Get ups-hp-uv ups-hp $OID_I.1 $OID_O.1
+Get ups-apc-uv ups-apc .1.3.6.1.4.1.318.1.1.1.3.2.1.0 \
+	.1.3.6.1.4.1.318.1.1.1.4.2.1.0
+#
+# Battery Temperature
+#
+OID=.1.3.6.1.2.1.33.1.2.7.0
+Get ups-ge-bt ups-ge $OID
+Get ups-apc-bt ups-apc .1.3.6.1.4.1.318.1.1.1.2.2.2.0
+#
+# UPS Load percent
+#
+OID=.1.3.6.1.2.1.33.1.4.4.1.5
+Get ups-ge-ul ups-ge $OID.1
+Get ups-ge-l2 ups-ge $OID.2
+Get ups-ge-l3 ups-ge $OID.3
+OID=.1.3.6.1.4.1.232.165.3.4.1.0
+Get ups-hp-ul ups-hp $OID
+Get ups-apc-ul ups-apc .1.3.6.1.4.1.318.1.1.1.4.2.3.0
+#
+# UPS Battery charge
+#
+OID=.1.3.6.1.2.1.33.1.2.4.0
+Get ups-ge-bc ups-ge $OID
+Get ups-hp-bc ups-hp $OID
+Get ups-apc-bc ups-apc .1.3.6.1.4.1.318.1.1.1.2.2.1.0
+#
+# UPS average time
+#
+OID=.1.3.6.1.2.1.33.1.2.3.0
+Get ups-ge-ut ups-ge $OID
+Get ups-hp-ut ups-hp $OID
+Get ups-apc-ut ups-apc .1.3.6.1.4.1.318.1.1.1.2.2.3.0
 
-# Use all Sgm options
-$SNMP myrouter .1.3.6.1.4.1.9.9.13.1.3.1.3.2 | $SGM \
-	-a \
-	-d "Temperature in °C" \
-	-f "" \
-	-l Temperature \
-	-n "<p>Data request by SNMP OID ciscoEnvMonTemperatureStatusEntry</p>" \
-	-p "<p>Graphs of changes in the internal temperature of myrouter</p>" \
-	-s "°C" \
-	$DIR/gw-t "Router temperature"
+# Waiting for Sgm processes to finish
+wait
+#
+# Main
+#
+{
+	echo ups-ge	ge
+	echo ups-hp	hp
+	echo ups-apc	apc
+} | awk '
+function TD(c, v, s) { if(s) s = " colspan=" s; print "<td bgcolor=" c s ">" v }
+function Td(c, t, v, s) {
+	TD(c, "<a target=_blank href=/cgi-bin/Sgm.cgi?" N "-" t ">" v "</a>", s)
+}
+function fbs() {	# Battery Status
+	v = U[N][t = "bs"][1]
+	if(v == 1)	{ c = Fi; v = "unknown" }
+	else if(v == 2)	{ c = Ok; v = "normal" }
+	else if(v == 3)	{ c = Wr; v = "low" }
+	else if(v == 4) { c = Fi; v = "depleted" }
+	else		{ c = Fi; v = "x" }
+	Td(C = c, t, v)
+}
+function fbt() {	# Battery Temperature
+	v = U[N][t = "bt"][1]
+	if(v == "")	{ c = Fi; v = "x" }
+	else if(v < 25) c = Ok
+	else if(v < 40) c = Wr
+	else		c = Fi
+	Td(c, t, v)
+}
+function fbc() {	# Battery Charge
+	v = U[N][t = "bc"][1]
+	if(v == "")	{ c = Fi; v = "x" }
+	else if(v < 10) c = Wr
+	else		c = Ok
+	Td(c, t, v)
+}
+function fuf(v) {	# Frequence
+	v = U[N][t = "uf"][v]
+	if(v == "")	{ c = Fi; v = "x" }
+	else {
+		if(M[N] == "ge") v /= 10
+		if(v < 49)	c = Wr
+		else if(v < 51) c = Ok
+		else		c = Wr
+	}
+	Td(c, t, v)
+}
+function fuv(v, t, s) {	# Voltage
+	v = U[N][t = "uv"][v]
+	if(v == "")	{ c = Fi; v = "x" }
+	else if(v < 198) c = Fi
+	else if(v < 209) c = Wr
+	else if(v < 231) c = Ok
+	else if(v < 242) c = Wr
+	else		c = Fi
+	Td(c, t, v, s)
+}
+function fv3(v, t) {	# Voltage 380
+	v = U[N][t][v]
+	if(v == "")	{ c = Fi; v = "x" }
+	else if(v < 341) c = Fi
+	else if(v < 351) c = Wr
+	else if(v < 411) c = Ok
+	else if(v < 421) c = Wr
+	else		c = Fi
+	Td(c, t, v)
+}
+function ful(v, t, s) {	# Load
+	v = U[N][t][v]
+	if(v == "")	{ c = Fi; v = "x" }
+	else {
+		if(M[N] == "hp") v = int(v / 100)
+		if(v < 80)	c = Ok
+		else if(v < 90)	c = Wr
+		else		c = Fi
+	}
+	Td(c, t, v, s)
+}
+function fut() {
+	v = U[N][t = "ut"][1]
+	if(v == "")	{ c = Fi; v = "x" }
+	else {
+		if(M[N] == "apc") v /= 6000
+		else if(v < 5) c = Wr
+		else		c = Ok
+	}
+	Td(c, t, v)
+}
+{ L[NR] = $1; M[$1] = $2 }
+END {
+	print "<!DOCTYPE html>\n<html>\n<head>\n" \
+		"<meta http-equiv=\"Refresh\" content=\"300\">\n" \
+		"<meta http-equiv=\"Pragma\" content=\"no-cache\">\n" \
+		"<meta http-equiv=\"Content-Type\"",
+		"content=\"text/html; charset=utf-8\">\n" \
+		"<title>NOC ulnsk.cbr.ru</title>\n" \
+		"</head>\n<body>\n" \
+		"<p align=center><font size=+2 color=blue>UPS monitor</font>",
+		"<b>" strftime("%c", systime()) "</b></p>\n" \
+		"<table align=center border=1 cellspacing=0 rowspacing=0>\n" \
+		"<tr bgcolor=#e0e0e0>\n" \
+		"<th rowspan=2>UPS\n" \
+		"<th colspan=3>Battery\n" \
+		"<th colspan=4>Input\n" \
+		"<th colspan=4>Output\n" \
+		"<th rowspan=2 colspan=3>Load,<br>%\n" \
+		"<th rowspan=2>Average<br>time,<br>min\n" \
+		"<tr bgcolor=#e0e0e0>\n" \
+		"<th>Status\n" \
+		"<th>Temp,<br>°C\n" \
+		"<th>Charge,<br>%\n" \
+		"<th>Freq,<br>Hz\n" \
+		"<th colspan=3>Volt,<br>V\n" \
+		"<th>Freq,<br>Hz\n" \
+		"<th colspan=3>Volt,<br>V"
+	Ok = "#00f000"
+	Fi = "#f00000"
+	Wr = "#f0f000"
+	F["hp"] = "bc bs uf ul ut uv"
+	F["apc"] = F["hp"] " bt"
+	F["ge"] = F["apc"] " l2 l3 v2 v3"
+	for(N in M) {
+		split(F[M[N]], H)
+		for(h in H) {
+			f = N "-" (h = H[h]) ".sgm"
+			if((getline < f) > 0) {
+				U[N][h][1] = $2; U[N][h][2] = $3; close(f)
+			}
+		}
+	}
+	for(N in L) {
+		N = L[N]
+		print "<tr align=center><th align=left bgcolor=#e0e0e0>" N
+		fbs()
+		if((m = M[N]) == "hp") TD(C, "-")
+		else fbt()
+		fbc()
+		fuf(1)
+		if(m == "ge") { fv3(1, "uv"); fv3(1, "v2"); fv3(1, "v3") }
+		else fuv(1, "uv", 3)
+		fuf(2)
+		if(m == "ge") { fuv(2, "uv"); fuv(2, "v2"); fuv(2, "v3") }
+		else fuv(2, "uv", 3)
+		if(m == "ge") { ful(1, "ul"); ful(1, "l2"); ful(1, "l3") }
+		else ful(1, "ul", 3)
+		fut()
+	}
+	print "</table>\n</body>\n</html>"
+}' >$HTM~
+/bin/mv -f $HTM~ $HTM

@@ -1,267 +1,107 @@
 #!/bin/sh
-SGM="@(#) Sgm V1.3 (C) 2022 by Roman Oreshnikov"
 HLP="Simple graphic monitoring
 
-	$SGM
+	@(#) Sgm V2.0 (C) 2022 by Roman Oreshnikov
 
 	This is free software, and comes with NO WARRANTY
 
-Usage: Sgm [options] Path Title
+Usage: Sgm [options] Path
 
 Options:
-  -a      Absolute inputs, default: counters
-  -d TXT  Data legend
-  -f TXT  Legend to fill
-  -h      Display this help
-  -l TXT  Legend to line
-  -n HTM  Page note
-  -p HTM  Page description
-  -s TXT  Size legend
+  -a  Absolute inputs, default: counters
+  -h  Display this help
 
 Report bugs to <r.oreshnikov@gmail.com>"
-Err() { echo "Sgm: $*" >&2; exit 1; }
-while getopts ad:f:hl:n:p:s: K; do
-	case $K in
-	a) SGM_A=y;;
-	d) SGM_D=$OPTARG;;
-	f) SGM_F=$OPTARG;;
+Err() { echo -e "$0: $*" >&2; exit 1; }
+A=
+while getopts ah L; do
+	case $L in
+	a) A=y;;
 	h) echo "$HLP"; exit;;
-	l) SGM_L=$OPTARG;;
-	n) SGM_N=$OPTARG;;
-	p) SGM_P=$OPTARG;;
-	s) SGM_S=$OPTARG;;
-	?) Err "\rTry 'Sgm -h' for more information"
+	?) Err "\rTry '$0 -h' for more information"
 	esac
 done
 shift $(($OPTIND - 1))
-[ $# -ge 2 ] || Err Wrong number of parameters!
-HTM=$1.html
-LOG=$1.sgm
-shift
-[ -f "$HTM" ] && FH=$HTM || FH=
-[ -f "$LOG" ] && FL=$LOG || FL=/dev/null
-awk -vfH="$FH" -vfL="$LOG" -voA="$SGM_A" -voD="$SGM_D" -voF="$SGM_F" \
-	-voL="$SGM_L" -voN="$SGM_N" -voP="$SGM_P" -voS="$SGM_S" -voT="$*" '
-BEGIN { ts = strftime("%c", tn = systime()) }
-/^(([1-9][0-9]*)|0) (([1-9][0-9]*)|0)$/ || /^ $/ {
-	if(i < 1600) { F[++i] = $1; L[i] = $2; next }
+[ $# = 1 ] || Err Wrong number of parameters!
+case $1 in *[!a-zA-Z0-9_-]*|""|-*) Err Illegal filename!;; esac
+H=$1.sgm
+[ -f "$H" ] && L=$H || L=/dev/null
+awk -vH="$H" -vA="$A" '
+/^((-?[1-9][0-9]*)|0?) ((-?[1-9][0-9]*)|0?)$/ {
+	if(NR > 2 && NR < 1603) { F[NR] = $1; L[NR] = $2; next }
 }
-/^[1-9][0-9]*(( [1-9][0-9]*)|( 0)|( x)){2}$/ {
-	if(NR == 1 && $1 < tn) { s = $0; t = $1; next }
-	if(NR == 2 && $1 <= t && $0 !~ /x/ && ($0 == s || s ~ /x/)) {
+/^[1-9][0-9]*(( -?[1-9][0-9]*)|( 0?)){2}$/ {
+	if(NR == 1) {
+		s = $0; tt = $1; next
+	}
+	if(NR == 2 && $1 <= tt && $2 != "" && ($0 == s || s == (tt "  "))) {
 		tl = $1; fl = $2; ll = $3; next
 	}
 }
-{	exit n = 1 }
-function Htm(s) {
-	gsub(/&/, "\\&amp;", s)
-	gsub(/</, "\\&lt;", s)
-	gsub(/>/, "\\&gt;", s)
-	return s
-}
-function New(i, m, s, t) {
-	if(i == m && fH) End()
-	iu = i
-	print "<!-- " ++st " -->"
-	if(!m) {
-		print "<p>Latest statistics update: <b>" ts "</b></p>"
-		if(oP) print "<hr>\n" oP
-	}
-	print "<hr>\n<p><b>" s " graph</b> (" t " average)</p>\n" \
-		"<svg width=\"512\" height=\"128\"",
-		"style=\"font-size:70%;text-anchor:middle\">\n" \
-		"<text transform=\"translate(20,64)",
-		"rotate(270)\">" Htm(oD) "</text>\n" \
-		Way(sb, "M98,0.5 v115") "\n" \
-		Way(sb sw, "M95,6 l3,-6 3,6") "\n<g" tr ">\n" \
-		Way(sb, "M96,10 h2 M96,35 h2 M96,60 h2 M96,85 h2 " \
-			"M93,110 h418.5") "\n" \
-		Way(sb sw, "M506,107 l6,3 -6,3") "\n" \
-		Way(sg, "M99,10 h402 M99,35 h402 M99,60 h402 M99,85 h402") \
-		"\n</g>"
-}
-function End(s) {
-	if(s) print "<p style=\"color:red\">Error getting monitoring",
-		s ":", ts "</p>\n<hr>"
-	else { tl = tn; fl = fn; ll = ln }
-	if(st < 4 && fH)
-		while(getline < fH) { if($0 ~ /^<!--/) st--; if(st < 0) print }
-	if(st >= 0) {
-		if(oN) print "<hr>\n" oN
-		print "<hr>\n<p style=\"text-align:right;font:italic 70%",
-		"small-caption\">'"$SGM"'</p>\n</body>\n</html>"
-	}
-	if(fn != "") {
-		print tn, fn, ln "\n" tl, fl, ll >(n = fL "~")
-		for(i = iy - 400; i++ < iy;) print F[i], L[i] >n
-		for(i = im - 400; i++ < im;) print F[i], L[i] >n
-		for(i = iw - 400; i++ < iw;) print F[i], L[i] >n
-		for(i = id - 400; i++ < id;) print F[i], L[i] >n
-		system("mv -f " n " " fL)
-	}
-	exit
-}
-function Num(i, j) {
-	if(j) {
-		while(sub(/000$/, "", i)) j++
-		if(--j) return i " " R[j]
-		return i
-	}
-	for(; i > 9999; j++) i /= 1000
-	if(i ~ /\./) i = sprintf("%.1f", i)
-	if(j || oS) return i " " R[j] oS
-	return i
-
-}
-function Txt(t, x, y) { return "<text x=\"" x "\" y=\"" y "\">" t "</text>" }
-function Way(s, d) { return "<path style=\"" s "\" d=\"" d "\"/>" }
-function Two()	{ gsub(/v2/, "v-100", p); gsub(/v-2/, "v100", p); return p }
-function Row(D, c, t) {
-	for(l = s = x = y = D[i = iu]; --i > n && D[i] != ""; s += D[i])
-		if(x < D[i]) x = D[i]; else if(y > D[i]) y = D[i]
-	if(m < x) m = x
-	s /= iu - i
-	if(ne) { p = -y; y = -x; x = p; l = -l; s = -s }
-	return "<tr><td style=\"text-align:left;color:" c "\">" t \
-		"<td>" Num(x) "<td>" Num(s) "<td>" Num(y) "<td>" Num(l)
-}
-function Fig(D, s, l) {
-	p = "M99," (110 - (y = int(D[i = n] / m))) " l"
-	while(i++ < iu) p = p " 1," (y - (y = int(D[i] / m)))
-	print Way(s, p l)
-}
-function Dat(x, i) {
-	p = "M" (x = 498 - int(x)) (j = ",10 v102")
-	if((x -= i) > 98) p = p " M" x j
-	print Way("stroke:red", p)
-	m = 1
-	n = iu - 400
-	if(oF) f = Row(F, "green", oF)
-	if(oL) l = Row(L, "blue", oL)
-	if(m < 1000) m = int((m + 3) / 4)
-	else m = int((((--m + (i = 10^(length(m) - 3))) / i) + 3) / 4) * i
-	i = -m
-	if(ne) i *= 5
-	p = ""
-	y = 138
-	while((y -= 25) > 0) p = p Txt(Num(i += m, 1), 90, y) "\n"
-	print "<g style=\"text-anchor:end\">\n" p "</g>\n<g" tr ">"
-	m /= 25
-	n++
-	if(oF) Fig(F, "stroke:#00f000;fill:#00f000", " L498,110 L99,110 z")
-	if(oL) Fig(L, "stroke:blue;fill:none")
-	print "</g>\n</svg>\n<table width=\"100%\">\n" \
-		"<tr><th><th>Max<th>Mid<th>Min<th>Now"
-	if(oF) print f
-	if(oL) print l
-	print "</table>"
+{ exit }
+function End() {
+	if(fn != "") { tl = tn; fl = fn; ll = ln }
+	print tn, fn, ln "\n" tl, fl, ll >(f = H "~")
+	for(i = iy - 400; i++ < iy;) print F[i], L[i] >f
+	for(i = im - 400; i++ < im;) print F[i], L[i] >f
+	for(i = iw - 400; i++ < iw;) print F[i], L[i] >f
+	for(i = id - 400; i++ < id;) print F[i], L[i] >f
+	system("mv -f " f " " H)
 }
 END {
-	print "<!DOCTYPE html>\n<html>\n<head>\n" \
-		"<meta http-equiv=\"Content-Type\"",
-			"content=\"text/html; charset=utf-8\">\n" \
-		"<meta http-equiv=\"Pragma\" content=\"no-cache\">\n" \
-		"<meta http-equiv=\"Refresh\" content=\"300\">\n" \
-		"<title>" (oT = Htm(oT)) "</title>\n<style>\n" \
-		"tr td { text-align:right }\ntd, th { padding-left:1ex }\n" \
-		"p { text-indent:2em }\n</style>\n</head>\n" \
-		"<body style=\"max-width:512px\">\n" \
-		"<h3 align=\"center\">" oT "</h3>"
-	if(n || (NR && NR != 1602)) End("history")
-	id = 1600
-	iw = 1200
-	im = 800
-	iy = 400
+	if(NR && NR != 1602) exit
+	tn = systime()
+	if((t = tt - tt % 300) == (s = tn - tn % 300)) exit
 	while(getline <"-")
-		if(++n < 3 && /^((-?[1-9][0-9]*)|0)$/) {
-			if($0 < 0) { $0 = -$0; ne = "-" }
-			if(n == 1) fn = ln = $0; else ln = $0
-		} else { fn = ""; break }
-	if(fn == "") { if(s !~ /x/ && NR) fn = ln = "x"; End("data") }
-	if(!NR) End()
-	if((t = tl - tl % 300) == (s = tn - tn % 300)) End(fn = "")
-	tz = int((tz = strftime("%z", tn)) / 100) * 3600 + tz % 100 * 60
+		if(++i < 3 && /^((-?[1-9][0-9]*)|0)$/) { if(i == 1) fn = ln = $0; else ln = $0 }
+		else { fn = ln = ""; break }
+	id = 1602
+	iw = 1202
+	im = 802
+	iy = 402
+	if(!t) { if(fn != "") End(); exit }
+	tz = strftime("%z", tn)
+	tz = int(tz / 100) * 3600 + tz % 100 * 60
 	t += tz
 	s += tz
-	tz += tn
-	if(oA) {
-		fl = int((fn + fl) / 2); ll = int((ln + ll) / 2)
-	} else {
-		if((fl = fn - fl) < 0) fl += 2^32; fl = int(fl / (x = tn - tl))
-		if((ll = ln - ll) < 0) ll += 2^32; ll = int(ll / x)
-	}
 	do {
-		t += 300; F[++id] = f = fl; L[id] = l = ll
+		if((t += 300) < s) f = l = ""
+		else if(fn == "") f = l = ""
+		else if(A) { f = fn; l = ln }
+		else {
+			if((f = fn - fl) < 0) f += 2^32; f = int(f / (x = tn - tl))
+			if((l = ln - ll) < 0) l += 2^32; l = int(l / x)
+		}
+		F[++id] = f; L[id] = l
 		if(!(t % 1800)) {
-			for(i = 6; --i;) { f += F[id - i]; l += L[id - i] }
-			F[++iw] = f = int(f / 6); L[iw] = l = int(l / 6)
+			iw++
+			if(f == "") x = 0; else x = 1
+			for(i = 6; --i;) if(F[id - i] != "") { x++; f += F[id - i]; l += L[id - i] }
+			if(f == "") F[iw] = L[iw] = f; else { F[iw] = f = int(f / x); L[iw] = l = int(l / x) }
 		}
 		if(!(t % 7200)) {
-			for(i = 4; --i;) { f += F[iw - i]; l += L[iw - i] }
-			F[++im] = f = int(f / 4); L[im] = l = int(l / 4)
+			im++
+			if(f == "") x = 0; else x = 1
+			for(i = 4; --i;) if(F[iw - i] != "") { x++; f += F[iw - i]; l += L[iw - i] }
+			if(f == "") F[im] = L[im] = f; else { F[im] = f = int(f / x); L[im] = l = int(l / x) }
 		}
 		if(!(t % 86400)) {
-			for(i = 12; --i;) { f += F[im - i]; l += L[im - i] }
-			F[++iy] = int(f / 12); L[iy] = int(l / 12)
-			if((x = s - t)) {
+			iy++
+			if(f == "") x = 0; else x = 1
+			for(i = 12; --i;) if(F[im - i] != "") { x++; f += F[im - i]; l += L[im - i] }
+			if(f == "") F[iy] = L[iy] = f; else { F[iy] = int(f / x); L[iy] = int(l / x) }
+			if((x = s - t - 300) > 0) {
+				t += x
 				if((i = int(x / 300)) > 400) i = 400
-				while(i--) { F[++id] = fl; L[id] = ll }
+				while(i--) F[id] = L[++id] = ""
 				if((i = int(x / 1800)) > 400) i = 400
-				while(i--) { F[++iw] = fl; L[iw] = ll }
+				while(i--) F[iw] = L[++iw] = ""
 				if((i = int(x / 7200)) > 400) i = 400
-				while(i--) { F[++im] = fl; L[im] = ll }
+				while(i--) F[im] = L[++im] = ""
 				if((i = int(x / 86400)) > 400) i = 400
-				while(i--) { F[++iy] = fl; L[iy] = ll }
-				break
+				while(i--) F[iy] = L[++iy] = ""
 			}
 		}
 	} while(t < s)
-	oF = Htm(oF)
-	oL = Htm(oL)
-	oS = Htm(oS)
-	sb = "stroke:black;"
-	sw = "stroke-width:0.5;"
-	sg = sb sw "stroke-dasharray:0.5 1.5"
-	split("kMGT", R, "")
-	if(ne) tr = " transform=\"translate(0,120) scale(1,-1)\""
-	New(id, 0, "Daily", "5 minute")
-	p = "M" (x = 498 - int(tz % 3600 / 300)) ",110 v" (i = 2)
-	for(t = strftime("%H", tn); (x -= 12) > 98;) {
-		p = p " m-12,0 v" (i = -i)
-		if(--t < 0) t += 24
-		if(i < 0) print Txt(t, x, 125)
-	}
-	print Way(sb, p) "\n" Way(sg, Two())
-	Dat(tz % 86400 / 300, 288)
-	New(iw, 1200, "Weekly", "30 minute")
-	p = "M" (x = 498 - int(tz % 86400 / 1800)) ",110 v" (i = 2)
-	for(t = tn; (x -= 48) > 98; p = p " m-48,0 v" (i = -i))
-		print Txt(strftime("%a", t -= 86400), x + 24, 125)
-	print Way(sb, p) "\n" Way(sg, Two())
-	Dat((w = (tz + 259200) % 604800) / 1800, 336)
-	New(im, 800, "Monthly", "2 hour")
-	p = "M" (x = 498 - int(tz % 86400 / 7200)) ",110 v" (n = i = 2)
-	for(t = tn - 86400; (x -= 12) > 100; p = p " m-12,0 v" (i = -i))
-		if(i > 0) {
-			if((n -= 2) < 1) n = int(strftime("%d", t))
-			print Txt(n, x + 6, 125)
-			t -= 172800
-		}
-	print Way(sb, p)
-	p = "M" (x = 498 - int(w / 7200)) ",110 v" (i = -100)
-	while((x -= 84) > 98) p = p " m-84,0 v" (i = -i)
-	print Way(sg, p)
-	Dat(((n = strftime("%d", tn)) - 1) * 12 + tz % 86400 / 7200,
-		strftime("%d", tn - n * 86400) * 12)
-	New(iy, 400, "Yearly", "1 day")
-	x = 498 - (n = strftime("%d", t = tn - 86400))
-	p = "M" x ",110 v" (i = 2)
-	while((x -= (n = strftime("%d", t -= n * 86400))) > 98) {
-		p = p " m-" n ",0 v" (i = -i)
-		print Txt(strftime("%b", t), x + int(n / 2), 125)
-	}
-	print Way(sb, p) "\n" Way(sg, Two())
-	Dat(i = strftime("%j", tn - 86400), strftime("%j", tn - ++i * 86400))
 	End()
-}' "$FL" >"$HTM~"
-mv -f "$HTM~" "$HTM"
+}' "$L"
